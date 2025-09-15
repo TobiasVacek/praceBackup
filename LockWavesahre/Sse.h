@@ -5,8 +5,34 @@
 String lastSseServer = "";
 
 HTTPClient httpClient;
-WiFiClient * stream = NULL;
+WiFiClient* stream = NULL;
+const String terminatingChar = "\n\n\r\n";
 
+void parseRawMessage(uint8_t buff[512], int size) {
+
+  String message = (char*)buff;
+  static String partialMessage = "";
+  boolean recievedWholeMessage = true;
+
+  
+
+  while (recievedWholeMessage) {
+    message = partialMessage + message;
+    int endIndex = message.indexOf(terminatingChar);
+
+    if (endIndex != -1) {
+      printf("-----------------------\n");
+      printf("message: %s\n", message.substring(0, endIndex).c_str());
+      printf("////////////////////////////\npartial message: %s", partialMessage.c_str());
+      printf("-----------------------\n");
+      message = message.substring(endIndex + sizeof(terminatingChar) / sizeof(char), size);
+
+    } else {
+      partialMessage = message;
+      recievedWholeMessage = false;
+    }
+  }
+}
 void parseSseMessage(String type, uint8_t* payload) {
   printf("[Sse] get text (%s): %s\n", type, payload);
 
@@ -19,20 +45,20 @@ void parseSseMessage(String type, uint8_t* payload) {
   } else {
     String cliId = doc["clientId"];
     String action = doc["action"];
-    
-    //TODO    
+
+    //TODO
   }
 }
 
 boolean checkConnected() {
-  
-  String url = serverName +"/api/sse/listen";
+
+  String url = serverName + "/api/sse/listen";
 
   boolean justConnected = false;
   if (!httpClient.connected()) {
     printf("[Sse] connecting SSE at: ");
-    printf("%s\n", url);
-    
+    printf("%s\n", url.c_str());
+
     httpClient.begin(url);
     justConnected = true;
   }
@@ -42,10 +68,10 @@ boolean checkConnected() {
       printf("[Sse] connected - get stream\n");
       int httpCode = httpClient.GET();
       printf("[Sse] SSE response code: %d\n", httpCode);
-      
+
       if (httpCode > 0) {
         // HTTP header has been send and Server response header has been handled
-        
+
         // file found at server
         if (httpCode == HTTP_CODE_OK) {
 
@@ -65,7 +91,7 @@ boolean checkConnected() {
       } else {
         stream = NULL;
       }
-    }  
+    }
   } else {
     printf("[Sse] NOT connected");
     stream = NULL;
@@ -81,7 +107,7 @@ void setupSse() {
       httpClient.end();
     }
 
-    lastSseServer = serverName;  
+    lastSseServer = serverName;
   }
 }
 
@@ -89,15 +115,13 @@ void loopSse() {
   if (lastSseServer != serverName) {
     setupSse();
   }
-  
+
   if (checkConnected() && stream != NULL) {
     // get length of document (is -1 when Server sends no Content-Length header)
     int len = httpClient.getSize();
 
     // create buffer for read
     uint8_t buff[512] = { 0 };
-    uint8_t partialMessage[512] = {0};
-    Boolean recievedPartialMessage = false;
     // read all data from server
     while (httpClient.connected() && (len > 0 || len == -1)) {
       // get available data size
@@ -109,28 +133,20 @@ void loopSse() {
 
         // write it to Serial
         printf("[Sse] ");
-        fwrite(buff,sizeof(char), c, stdout);
+        fwrite(buff, sizeof(char), c, stdout);
 
-        for(int i = 0; i <=c;i++){ //only for testing
-          printf("%0x ",buff[i]);
+
+        for (int i = 0; i <= c; i++) {  //only for testing
+          printf("%0x ", buff[i]);
         }
         putchar('\n');
-        int endIndex = buff.indexOf("\n\n\r\n");
-        printf("endIndex: %d len:%d\n", endIndex,c);
-        if(endIndex != -1 ){
-          if(endIndex == c-5 && !recievedPartialMessage){//the terminating characters are at the end of the buffer (5 is lenght of terminating characters)
-            printf("here yay\n");
-          } 
-        }
-
+        parseRawMessage(buff, c);
         if (len > 0) {
-            len -= c;
+          len -= c;
         }
       } else {
         break;
       }
     }
-
   };
-
 }

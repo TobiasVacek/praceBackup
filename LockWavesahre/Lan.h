@@ -113,9 +113,9 @@ void onLanEvent(arduino_event_id_t event, arduino_event_info_t info) {
       localIP = localIPAddress.toString();
       macAddress = ETH.macAddress();
       printf("ETH MAC: ");
-      printf("%s", macAddress);
+      printf("%s", macAddress.c_str());
       printf(", IPv4: ");
-      printf("%s\n", localIP);
+      printf("%s\n", localIP.c_str());
 
       networkConnected("LAN", localIP);
       break;
