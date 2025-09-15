@@ -1,3 +1,13 @@
+/*
+Used libraries
+
+ESP Async WebServer 3.8.0 by ESP32Async
+Async_TCP 3.4.7
+arduinoWebSockets-master (included in file folder as zip)
+ArduinoJson-6.x (included in file folder as zip)
+NTPClient 3.2.1 by Fabrice Weinberg
+*/
+
 #include "WS_Serial.h"
 
 #include "ChipId.h"
@@ -6,11 +16,11 @@
 #include "Relays.h"
 #include "WS_ETH.h"
 #include "Lan.h"
-#include "StatusLED.h";
+#include "StatusLED.h"
 #include "WifiAP.h"
 #include "WebServer.h"
-#include "Boomerang.h"
-// #include "Sse.h"
+//#include "Boomerang.h"
+#include "Sse.h"
 
 uint32_t Simulated_time=0;
 
@@ -30,7 +40,7 @@ void setup() {
   delay(1000);
   setupServer();
   delay(1000);
-  //setupSse();
+  setupSse();
 }
 
 void loop() {
@@ -45,11 +55,11 @@ void loop() {
   wifiEnabled = !lanConnected;
 
   loopServer();
-  loopBoomerang();
+  //loopBoomerang();
   loopRelay();
   loopLED();
 
   wifiEnabled = !lanConnected;
   loopWifi();
-  //loopSse();
+  loopSse();
 }

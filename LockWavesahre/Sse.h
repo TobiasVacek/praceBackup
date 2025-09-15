@@ -1,6 +1,6 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
-#include <Settings.h>
+//#include <Settings.h>
 
 String lastSseServer = "";
 
@@ -25,7 +25,9 @@ void parseSseMessage(String type, uint8_t* payload) {
 }
 
 boolean checkConnected() {
-  String url = "http://192.168.2.103:8008/api/sse/listen";
+  
+  String url = serverName +"/api/sse/listen";
+
   boolean justConnected = false;
   if (!httpClient.connected()) {
     printf("[Sse] connecting SSE at: ");
@@ -55,6 +57,7 @@ boolean checkConnected() {
 
           // get tcp stream
           stream = httpClient.getStreamPtr();
+          statusServerConnected = true;
           return true;
         } else {
           stream = NULL;
@@ -93,7 +96,8 @@ void loopSse() {
 
     // create buffer for read
     uint8_t buff[512] = { 0 };
-
+    uint8_t partialMessage[512] = {0};
+    Boolean recievedPartialMessage = false;
     // read all data from server
     while (httpClient.connected() && (len > 0 || len == -1)) {
       // get available data size
@@ -105,7 +109,19 @@ void loopSse() {
 
         // write it to Serial
         printf("[Sse] ");
-        Serial.write(buff, c);
+        fwrite(buff,sizeof(char), c, stdout);
+
+        for(int i = 0; i <=c;i++){ //only for testing
+          printf("%0x ",buff[i]);
+        }
+        putchar('\n');
+        int endIndex = buff.indexOf("\n\n\r\n");
+        printf("endIndex: %d len:%d\n", endIndex,c);
+        if(endIndex != -1 ){
+          if(endIndex == c-5 && !recievedPartialMessage){//the terminating characters are at the end of the buffer (5 is lenght of terminating characters)
+            printf("here yay\n");
+          } 
+        }
 
         if (len > 0) {
             len -= c;
