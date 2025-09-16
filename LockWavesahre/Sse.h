@@ -8,14 +8,55 @@ HTTPClient httpClient;
 WiFiClient* stream = NULL;
 const String terminatingChar = "\n\n\r\n";
 
-String returnSubstring(String message, String fromString, String toString, boolean includeEdges = false) {
+String returnSubstring(String message, String fromString, String toString, boolean includeEdges = false, boolean findLast = false) {
   //returns substring of message between two given Strings
+  int startIndex = message.indexOf(fromString);
+  int endIndex = findLast ? message.lastIndexOf(toString) : message.indexOf(toString, startIndex + fromString.length());
+
+  if (startIndex == -1 || endIndex == -1) return "";
+
   if (includeEdges) {
-    return message.substring(message.indexOf(fromString), message.indexOf(toString) + 1);
+    return message.substring(startIndex, endIndex + toString.length());
   }
-  return message.substring(message.indexOf(fromString) + (sizeof(fromString) / sizeof(char)), message.indexOf(toString));
+
+  return message.substring(startIndex + fromString.length(), endIndex);
 }
 
+void parseSseMessage(String type, String payload) {
+  printf("[Sse] get text (%s): %s\n", type.c_str(), payload.c_str());
+
+  DynamicJsonDocument doc(500);
+  DeserializationError error = deserializeJson(doc, payload.c_str());
+  if (error) {
+    printf("deserializeJson() failed: ");
+    printf("%s\n", error.f_str());
+    return;
+  }
+
+  byte timeSeconds = unlockTime;
+  byte keyModuleId;
+  byte keyDoorId;
+  byte keyDoorLedId;
+
+  if (type.equals("unlock")) {
+    keyModuleId = doc["keyModuleId"];
+    keyDoorId = doc["keyDoorId"];
+    keyDoorLedId = doc["keyDoorLedId"];
+
+    if (keyDoorId > 0 && keyModuleId == 0) {
+      // unlock master relay
+      printf("[WSc] processing invoke unlock local relay: %d for %d seconds\n", keyDoorId, timeSeconds);
+      unlockLocalDoor(keyDoorId, timeSeconds);
+    }
+
+    //  -----   LED RELAY ---------
+    if (keyDoorLedId > 0 && keyModuleId == 0) {
+      // switch on master relay
+      printf("[WSc] processing invoke unlock local LED relay: %d for %d seconds\n", keyDoorLedId, timeSeconds);
+      unlockLocalDoor(keyDoorLedId, timeSeconds);
+    }
+  }
+}
 
 void parseRawMessage(uint8_t buff[512], int size) {
 
@@ -31,50 +72,28 @@ void parseRawMessage(uint8_t buff[512], int size) {
     int endIndex = message.indexOf(terminatingChar);
 
     if (endIndex != -1) {
-      /*printf("-----------------------\n");
-      printf("message: %s\n", message.substring(0, endIndex).c_str());
-      printf("////////////////////////////\npartial message: %s", partialMessage.c_str());
-      printf("-----------------------\n");*/
-      partialMessage = message.substring(endIndex + sizeof(terminatingChar) / sizeof(char), size);
-      message = message.substring(0, endIndex);
+      partialMessage = message.substring(endIndex + terminatingChar.length());
+      message = message.substring(0, endIndex + terminatingChar.length());
 
       if (message.indexOf("id:") != -1) {
         id = returnSubstring(message, "id:", "\n").toInt();
-        printf("id is: %d\n", id);
       }
+
       if (message.indexOf("event:") != -1) {
         event = returnSubstring(message, "event:", "\n");
-        printf("parsed event = %s\n", event.c_str());
       }
+
       if (message.indexOf("data:") != -1) {
-        data = returnSubstring(message, "{", "}",true);
-        printf("parsed data %s\n", data.c_str());
+        data = returnSubstring(message, "{", "}", true, true);
       }
       message = "";
+      parseSseMessage(event, data);
 
     } else {
       partialMessage = message;
       message = "";
       recievedWholeMessage = false;
     }
-  }
-}
-
-
-void parseSseMessage(String type, uint8_t* payload) {
-  printf("[Sse] get text (%s): %s\n", type, payload);
-
-  DynamicJsonDocument doc(500);
-  DeserializationError error = deserializeJson(doc, payload);
-  if (error) {
-    printf("deserializeJson() failed: ");
-    printf("%s\n", error.f_str());
-    return;
-  } else {
-    String cliId = doc["clientId"];
-    String action = doc["action"];
-
-    //TODO
   }
 }
 
@@ -165,10 +184,7 @@ void loopSse() {
         fwrite(buff, sizeof(char), c, stdout);
 
 
-        for (int i = 0; i <= c; i++) {  //only for testing
-          printf("%0x ", buff[i]);
-        }
-        putchar('\n');
+
         parseRawMessage(buff, c);
         if (len > 0) {
           len -= c;
