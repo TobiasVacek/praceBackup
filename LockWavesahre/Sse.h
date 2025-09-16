@@ -7,18 +7,22 @@ String lastSseServer = "";
 HTTPClient httpClient;
 WiFiClient* stream = NULL;
 const String terminatingChar = "\n\n\r\n";
+const byte pingIntervalSeconds = 17;  // 15s per ping + 2s for possible delay during calculation
+boolean sseConnected = false;
 
 String returnSubstring(String message, String fromString, String toString, boolean includeEdges = false, boolean findLast = false) {
+
   //returns substring of message between two given Strings
+
   int startIndex = message.indexOf(fromString);
   int endIndex = findLast ? message.lastIndexOf(toString) : message.indexOf(toString, startIndex + fromString.length());
 
-  if (startIndex == -1 || endIndex == -1) return "";
-
+  if (startIndex == -1 || endIndex == -1) {
+    return "";
+  }
   if (includeEdges) {
     return message.substring(startIndex, endIndex + toString.length());
   }
-
   return message.substring(startIndex + fromString.length(), endIndex);
 }
 
@@ -103,15 +107,16 @@ boolean checkConnected() {
   String url = serverName + "/api/sse/listen";
 
   boolean justConnected = false;
-  if (!httpClient.connected()) {
+  if (!httpClient.connected() || !sseConnected) {
     printf("[Sse] connecting SSE at: ");
     printf("%s\n", url.c_str());
-
+    statusServerConnected = false;
+    stream = NULL;
     httpClient.begin(url);
     justConnected = true;
   }
 
-  if (httpClient.connected() || justConnected) {
+  if (httpClient.connected() || justConnected || !sseConnected) {
     if (stream == NULL) {
       printf("[Sse] connected - get stream\n");
       int httpCode = httpClient.GET();
@@ -125,7 +130,7 @@ boolean checkConnected() {
 
           // get length of document (is -1 when Server sends no Content-Length header)
           int len = httpClient.getSize();
-
+          sseConnected = true;
           // create buffer for read
           uint8_t buff[128] = { 0 };
 
@@ -153,6 +158,7 @@ void setupSse() {
     // server name changed, close connection
     if (lastSseServer != serverName && httpClient.connected()) {
       httpClient.end();
+      statusServerConnected = false;
     }
 
     lastSseServer = serverName;
@@ -174,18 +180,25 @@ void loopSse() {
     while (httpClient.connected() && (len > 0 || len == -1)) {
       // get available data size
       size_t size = stream->available();
-
+      static TickType_t lastMessageTickCount = xTaskGetTickCount();
+      TickType_t diff = xTaskGetTickCount() - lastMessageTickCount;
+      printf("diff: %d\n", diff);
+      if (diff > (1000 * pingIntervalSeconds)) {
+        statusServerConnected = false;
+        stream = NULL;
+        httpClient.end();
+        sseConnected = false;
+      }
       if (size) {
+
         // read up to 512 byte
         int c = stream->readBytes(buff, ((size > sizeof(buff)) ? sizeof(buff) : size));
-
+        lastMessageTickCount = xTaskGetTickCount();
         // write it to Serial
         printf("[Sse] ");
         fwrite(buff, sizeof(char), c, stdout);
-
-
-
         parseRawMessage(buff, c);
+
         if (len > 0) {
           len -= c;
         }
