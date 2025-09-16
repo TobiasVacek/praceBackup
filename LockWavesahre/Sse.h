@@ -8,31 +8,59 @@ HTTPClient httpClient;
 WiFiClient* stream = NULL;
 const String terminatingChar = "\n\n\r\n";
 
+String returnSubstring(String message, String fromString, String toString, boolean includeEdges = false) {
+  //returns substring of message between two given Strings
+  if (includeEdges) {
+    return message.substring(message.indexOf(fromString), message.indexOf(toString) + 1);
+  }
+  return message.substring(message.indexOf(fromString) + (sizeof(fromString) / sizeof(char)), message.indexOf(toString));
+}
+
+
 void parseRawMessage(uint8_t buff[512], int size) {
 
   String message = (char*)buff;
   static String partialMessage = "";
   boolean recievedWholeMessage = true;
 
-  
-
+  String event = "";
+  String data = "";
+  int id = -1;
   while (recievedWholeMessage) {
     message = partialMessage + message;
     int endIndex = message.indexOf(terminatingChar);
 
     if (endIndex != -1) {
-      printf("-----------------------\n");
+      /*printf("-----------------------\n");
       printf("message: %s\n", message.substring(0, endIndex).c_str());
       printf("////////////////////////////\npartial message: %s", partialMessage.c_str());
-      printf("-----------------------\n");
-      message = message.substring(endIndex + sizeof(terminatingChar) / sizeof(char), size);
+      printf("-----------------------\n");*/
+      partialMessage = message.substring(endIndex + sizeof(terminatingChar) / sizeof(char), size);
+      message = message.substring(0, endIndex);
+
+      if (message.indexOf("id:") != -1) {
+        id = returnSubstring(message, "id:", "\n").toInt();
+        printf("id is: %d\n", id);
+      }
+      if (message.indexOf("event:") != -1) {
+        event = returnSubstring(message, "event:", "\n");
+        printf("parsed event = %s\n", event.c_str());
+      }
+      if (message.indexOf("data:") != -1) {
+        data = returnSubstring(message, "{", "}",true);
+        printf("parsed data %s\n", data.c_str());
+      }
+      message = "";
 
     } else {
       partialMessage = message;
+      message = "";
       recievedWholeMessage = false;
     }
   }
 }
+
+
 void parseSseMessage(String type, uint8_t* payload) {
   printf("[Sse] get text (%s): %s\n", type, payload);
 
@@ -49,6 +77,7 @@ void parseSseMessage(String type, uint8_t* payload) {
     //TODO
   }
 }
+
 
 boolean checkConnected() {
 
